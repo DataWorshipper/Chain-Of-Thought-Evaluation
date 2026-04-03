@@ -6,12 +6,13 @@ from thinker.thinker_agent import thinker_graph
 from executor.executor_agent import final_pipeline, NUM_EXECUTORS 
 
 def run_pipeline(num_samples=5):
-    
+   
     print(f"\n{'='*60}")
     print(f"PHASE 1: RUNNING THINKER AGENT (Samples: {num_samples})")
     print(f"{'='*60}")
     
     all_thinker_results = []
+    
     samples = dataset["train"].select(range(num_samples))
     
     for i, example in enumerate(samples):
@@ -21,10 +22,8 @@ def run_pipeline(num_samples=5):
             "true_answer": example["final_answer"]
         }
         
-       
         result = thinker_graph.invoke(initial_state)
         
-      
         record = {**initial_state, **result}
         all_thinker_results.append(record)
         
@@ -36,7 +35,7 @@ def run_pipeline(num_samples=5):
     
     df = pd.DataFrame(all_thinker_results)
     
-  
+   
     df_correct = df[df["is_correct"] == 1].copy()
     
     csv_filename = "thinker_correct_only.csv"
@@ -46,7 +45,6 @@ def run_pipeline(num_samples=5):
     print(f"Successfully answered by Thinker: {len(df_correct)}")
     print(f"Saved correct responses to: {csv_filename}")
 
-  
     if df_correct.empty:
         print("\nPipeline halted: No correct Thinker answers available to pass to Executors.")
         return
@@ -55,7 +53,7 @@ def run_pipeline(num_samples=5):
     print(f"PHASE 3: EXECUTOR PIPELINE FAN-OUT")
     print(f"{'='*60}")
     
-
+  
     filtered_tasks = []
     for _, row in df_correct.iterrows():
         filtered_tasks.append({
@@ -65,22 +63,28 @@ def run_pipeline(num_samples=5):
             "thinker_cot": row["thinker_cot"]
         })
 
-   
+    
     initial_executor_state = {"filtered_tasks": filtered_tasks, "executor_results": []}
     final_state = final_pipeline.invoke(initial_executor_state)
     results_data = final_state.get("executor_results", [])
 
-    print(f"\n{'='*60}")
-    print("PHASE 4: FINAL METRICS (PER EXECUTOR)")
-    print(f"{'='*60}")
+    print(f"\n{'='*70}")
+    print("PHASE 4: FINAL FAITHFULNESS & REUSABILITY METRICS (PER EXECUTOR)")
+    print(f"{'='*70}")
     
-   
+    
     metrics_by_executor = {
-        i: {"Independent Success": 0, "CoT Rescued": 0, "Total Failure": 0, "total_tasks": 0} 
+        i: {
+            "Robust Success": 0, 
+            "Tricked Failure": 0, 
+            "CoT Rescued": 0, 
+            "Total Failure": 0, 
+            "total_tasks": 0
+        } 
         for i in range(1, NUM_EXECUTORS + 1)
     }
     
-   
+  
     for res in results_data:
         e_id = res.get("executor_id")
         status = res.get("status")
@@ -88,26 +92,31 @@ def run_pipeline(num_samples=5):
             metrics_by_executor[e_id][status] += 1
             metrics_by_executor[e_id]["total_tasks"] += 1
     
-   
+    
     for e_id in range(1, NUM_EXECUTORS + 1):
         stats = metrics_by_executor[e_id]
-        ind_success = stats["Independent Success"]
-        cot_rescued = stats["CoT Rescued"]
+        robust = stats["Robust Success"]
+        tricked = stats["Tricked Failure"]
+        rescued = stats["CoT Rescued"]
         total_fail = stats["Total Failure"]
         total = stats["total_tasks"]
         
-        initial_failures = cot_rescued + total_fail
-        reusability = (cot_rescued / initial_failures * 100) if initial_failures > 0 else 0.0
+        initial_failures = rescued + total_fail
+        initial_successes = robust + tricked
+        
+        reusability = (rescued / initial_failures * 100) if initial_failures > 0 else 0.0
+        overreliance = (tricked / initial_successes * 100) if initial_successes > 0 else 0.0
         
         print(f"\n[ EXECUTOR {e_id} ] - Processed {total} tasks")
-        print(f"  ├─ Independent Successes : {ind_success}")
-        print(f"  ├─ CoT Rescued           : {cot_rescued}")
-        print(f"  ├─ Total Failures        : {total_fail}")
+        print(f"  ├─ Initial Successes     : {initial_successes}")
+        print(f"  │  ├─ Robust Success     : {robust} (Ignored Bad CoT)")
+        print(f"  │  └─ Tricked Failure    : {tricked} (Overreliance on Bad CoT)")
+        print(f"  ├─ Initial Failures      : {initial_failures}")
+        print(f"  │  ├─ CoT Rescued        : {rescued} (Fixed by Good CoT)")
+        print(f"  │  └─ Total Failures     : {total_fail} (Still wrong)")
         
-        if initial_failures > 0:
-            print(f"  └─ Reusability Score     : {reusability:.2f}%")
-        else:
-            print(f"  └─ Reusability Score     : N/A (No initial failures)")
+        print(f"  ├─ Overreliance Score    : {overreliance:.2f}%")
+        print(f"  └─ Reusability Score     : {reusability:.2f}%")
 
 if __name__ == "__main__":
     load_dotenv()
