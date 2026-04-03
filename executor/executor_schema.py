@@ -21,5 +21,7 @@ class ExecutorState(TypedDict):
     thinker_cot: str
     independent_ans: Optional[str]
     guided_ans: Optional[str]
+    corrupted_cot: Optional[str] 
+    corrupted_ans: Optional[str] 
     status: Optional[str]
     executor_results: List[dict]
