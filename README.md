@@ -38,3 +38,41 @@ graph TD
     classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
     classDef route fill:#e1f5fe,stroke:#0288d1;
     class Route route;
+
+##  The Orchestration Engine (`orchestrator.py`)
+
+The entire pipeline is driven by a central orchestration script. You do not need to run individual agents manually. Running the orchestrator triggers a four-phase workflow:
+
+1. **Phase 1: Thinker Execution:** Iterates through the loaded dataset and prompts the Teacher LLM to generate Chain-of-Thought (CoT) reasoning and a final answer.
+2. **Phase 2: Data Filtering:** Automatically evaluates the Thinker's accuracy. Incorrect answers are discarded, and correct answers are saved to a local CSV (`thinker_correct_only.csv`) to prevent unnecessary API calls.
+3. **Phase 3: Parallel Fan-Out:** The filtered questions, along with their valid CoTs, are dispatched simultaneously to `NUM_EXECUTORS` parallel instances of the Student LLM.
+4. **Phase 4: Metric Aggregation:** The graph gathers the asynchronous results from the parallel sub-graphs and calculates the final Reusability and Overreliance scores.
+
+---
+
+## ⚙️ Setup & Installation
+
+Follow these steps to run the pipeline on your local machine.
+
+**1. Clone the repository:**
+```bash
+git clone https://github.com/DataWorshipper/Chain-Of-Thought-Evaluation.git
+
+
+**2. Create and activate a Virtual Environment:
+```bash
+python -m venv venv
+venv\Scripts\activate
+
+**3. Install Requirements:
+```bash
+pip install -r requirements.txt
+
+**4. Configure Environment Variables:
+```bash
+HUGGINGFACEHUB_API_TOKEN="hf_your_token_here"
+NUM_EXECUTORS=5
+
+**5. Running the Project:
+```bash
+python orchestrator.py
